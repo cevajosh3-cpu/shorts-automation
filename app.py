@@ -1,7 +1,6 @@
 import streamlit as st
 import os
 import subprocess
-import yt_dlp
 
 # Try loading faster-whisper gracefully without crashing the web app
 try:
@@ -16,15 +15,16 @@ st.write("Upload your files below to clean video text, mix audio, and generate w
 st.markdown("---")
 
 st.subheader("1. Input Materials")
-youtube_url = st.text_input("Paste YouTube Shorts URL Here:", placeholder="https://www.youtube.com/shorts/...")
+# Replaced YouTube URL field with direct video file uploader to bypass 403 Forbidden blocks completely
+raw_video_file = st.file_uploader("Upload Original Short Video (MP4):", type=["mp4", "mov"])
 voiceover_file = st.file_uploader("Upload New Voiceover (MP3/WAV):", type=["mp3", "wav"])
 music_file = st.file_uploader("Upload Background Music (MP3/WAV):", type=["mp3", "wav"])
 
 st.markdown("---")
 
 if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
-    if not youtube_url or not voiceover_file or not music_file:
-        st.error("Please fill in the YouTube link and upload BOTH audio files first!")
+    if not raw_video_file or not voiceover_file or not music_file:
+        st.error("Please upload ALL three files (Video, Voiceover, and Background Music) first!")
     elif WhisperModel is None:
         st.error("System configuration error: AI Caption Engine failed to load. Check requirements.txt.")
     else:
@@ -45,38 +45,15 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                 if os.path.exists(f): 
                     os.remove(f)
 
-            # Save uploaded audio streams
+            # Save uploaded streams locally on the server filesystem
+            with open(raw_vid, "wb") as f:
+                f.write(raw_video_file.getbuffer())
             with open(vo_path, "wb") as f: 
                 f.write(voiceover_file.getbuffer())
             with open(bg_path, "wb") as f: 
                 f.write(music_file.getbuffer())
 
-            # --- ADVANCED STEP 1: MOBILE CLIENT BYPASS ---
-            status.info("⏳ Authenticating stream and bypassing cloud network block...")
-            
-            ydl_opts = {
-                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-                'outtmpl': raw_vid,
-                'overwrites': True,
-                # Force client spoofing to mimic native Android systems, removing the data-centre DRM mask
-                'extractor_args': {
-                    'youtube': {
-                        'player_client': ['android_vr', 'android_embed', 'web'],
-                        'skip': ['dash', 'hls']
-                    }
-                },
-                'quiet': True,
-                'no_warnings': True
-            }
-            
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([youtube_url])
-
-            # Check if video downloaded successfully
-            if not os.path.exists(raw_vid) or os.path.getsize(raw_vid) == 0:
-                raise Exception("The server downloaded an empty video container. Stream injection failed.")
-
-            # --- STEP 2: MEASURE VOICE LENGTH ---
+            # --- STEP 1: MEASURE VOICE LENGTH ---
             status.info("⏳ Analyzing your voiceover track length...")
             cmd_dur = [
                 "ffprobe", "-v", "error", 
@@ -86,7 +63,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             ]
             vo_duration = float(subprocess.run(cmd_dur, check=True, capture_output=True, text=True).stdout.strip())
 
-            # --- STEP 3: AUDIO DUCKING MIX ---
+            # --- STEP 2: AUDIO DUCKING MIX ---
             status.info("⏳ Mixing sound (VO at 100% / BG Music down by 80%)...")
             cmd_mix = [
                 "ffmpeg", "-y", "-i", vo_path, "-i", bg_path,
@@ -95,12 +72,12 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             ]
             subprocess.run(cmd_mix, check=True, capture_output=True)
 
-            # --- STEP 4: WORD-LEVEL TIMESTAMPS VIA WHISPER ---
+            # --- STEP 3: WORD-LEVEL TIMESTAMPS VIA WHISPER ---
             status.info("⏳ AI Engine transcribing speech word-by-word...")
             model = WhisperModel("tiny", device="cpu", compute_type="int8")
             segments, info = model.transcribe(vo_path, word_timestamps=True)
             
-            # --- STEP 5: GENERATE DYNAMIC KARAOKE STYLES (ASS) ---
+            # --- STEP 4: GENERATE DYNAMIC KARAOKE STYLES (ASS) ---
             status.info("⏳ Generating colorful word-by-word visual layout...")
             with open(ass_subs, "w", encoding="utf-8") as f:
                 f.write("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n")
@@ -117,7 +94,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                         duration_cs = int((word.end - word.start) * 100)
                         f.write(f"Dialogue: 0,{start_time},{end_time},Karaoke,,0,0,0,,{{\\k{duration_cs}}}{clean_word}\n")
 
-            # --- STEP 6: COMPILE EVERYTHING INTO COMPRESSED VIDEO ---
+            # --- STEP 5: COMPILE EVERYTHING INTO COMPRESSED VIDEO ---
             status.info("⏳ Cleaning footage, cutting to length, and burning captions...")
             cmd_render = [
                 "ffmpeg", "-y", "-i", raw_vid, "-i", mixed_audio,
@@ -131,7 +108,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
 
             status.success("🎉 Video completed successfully!")
             
-            # --- STEP 7: HAND OVER THE COMPLETED ASSET ---
+            # --- STEP 6: HAND OVER THE COMPLETED ASSET ---
             st.subheader("2. Final Result")
             with open(final_output, "rb") as file:
                 st.video(file.read())
