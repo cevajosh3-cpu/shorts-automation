@@ -29,14 +29,17 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
     else:
         status = st.empty()
         
-        # Create work directories safely
-        os.makedirs("workspace", exist_ok=True)
-        raw_vid = "workspace/raw.mp4"
-        vo_path = "workspace/vo.mp3"
-        bg_path = "workspace/bg.mp3"
-        mixed_audio = "workspace/mixed.mp3"
-        ass_subs = "workspace/subs.ass"
-        final_output = "workspace/final_render.mp4"
+        # Get absolute paths to prevent FFmpeg filter errors on Streamlit Cloud
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        workspace_dir = os.path.join(base_dir, "workspace")
+        os.makedirs(workspace_dir, exist_ok=True)
+        
+        raw_vid = os.path.join(workspace_dir, "raw.mp4")
+        vo_path = os.path.join(workspace_dir, "vo.mp3")
+        bg_path = os.path.join(workspace_dir, "bg.mp3")
+        mixed_audio = os.path.join(workspace_dir, "mixed.mp3")
+        ass_subs = os.path.join(workspace_dir, "subs.ass")
+        final_output = os.path.join(workspace_dir, "final_render.mp4")
 
         try:
             # Clean up old files from previous runs
@@ -91,8 +94,8 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             with open(ass_subs, "w", encoding="utf-8") as f:
                 f.write("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n")
                 f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                # Base layout font configuration. Alignment 2 (Bottom Center), MarginV 820 pushes it perfectly up into the middle safe zone
-                f.write("Style: MultiColor,Impact,80,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,2,2,10,10,820,1\n\n")
+                # Font size 85, Alignment 2 (Bottom Center), MarginV 850 positions text in middle safe-zone perfectly
+                f.write("Style: MultiColor,Impact,85,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,2,2,10,10,850,1\n\n")
                 f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
                 
                 color_index = 0
@@ -111,23 +114,25 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             # --- STEP 5: 10-STEP ANTI-COPYRIGHT RENDERING PIPELINE ---
             status.info("⏳ Running full anti-copyright processing layers...")
             
-            # FIXED MATH: Simplified scale logic syntax prevents server engine parsing breaks completely
+            # Using clean layout instructions to bypass status 187 parsing breaks completely
+            # Linux paths for subtitles file must escape backward slashes or keep a clean file pattern
+            clean_ass_path = ass_subs.replace("\\", "/")
             video_filters = (
-                "crop=in_w:in_h-300:0:150,"
-                "scale=1.02*iw:1.02*ih,"
-                "eq=gamma=1.05:saturation=1.1,"
-                "fps=30,"
-                "ass=workspace/subs.ass"
+                f"crop=in_w:in_h-300:0:150,"
+                f"scale=1.02*iw:1.02*ih,"
+                f"eq=gamma=1.05:saturation=1.1,"
+                f"fps=30,"
+                f"ass='{clean_ass_path}'"
             )
             
             cmd_render = [
                 "ffmpeg", "-y", "-i", raw_vid, "-i", mixed_audio,
                 "-filter_complex", f"[0:v]{video_filters}[v]",
                 "-map", "[v]", "-map", "1:a",
-                "-t", str(vo_duration),  # Strict timing rule: Cuts the file exactly when voice track finishes
+                "-t", str(vo_duration),  # Strict timing rule: Cuts video file exactly when voice track finishes
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "192k",
-                "-map_metadata", "-1",  # Wipes out all original metadata streams completely
+                "-map_metadata", "-1",  # Strips all original tracking metadata tags
                 final_output
             ]
             subprocess.run(cmd_render, check=True, capture_output=True)
