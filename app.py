@@ -1,9 +1,8 @@
 import streamlit as st
 import os
 import subprocess
-import torch
 
-# Try loading faster-whisper gracefully
+# Try loading faster-whisper gracefully without crashing the web app
 try:
     from faster_whisper import WhisperModel
 except ImportError:
@@ -17,8 +16,8 @@ st.markdown("---")
 
 st.subheader("1. Input Materials")
 youtube_url = st.text_input("Paste YouTube Shorts URL Here:", placeholder="https://youtube.com...")
-voiceover_file = st.file_uploader("Upload New Voiceover:", type=["mp3", "wav"])
-music_file = st.file_uploader("Upload Background Music:", type=["mp3", "wav"])
+voiceover_file = st.file_uploader("Upload New Voiceover (MP3/WAV):", type=["mp3", "wav"])
+music_file = st.file_uploader("Upload Background Music (MP3/WAV):", type=["mp3", "wav"])
 
 st.markdown("---")
 
@@ -42,20 +41,36 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
         try:
             # Clean up old files from previous runs
             for f in [raw_vid, vo_path, bg_path, mixed_audio, ass_subs, final_output]:
-                if os.path.exists(f): os.remove(f)
+                if os.path.exists(f): 
+                    os.remove(f)
 
             # Save uploaded audio streams
-            with open(vo_path, "wb") as f: f.write(voiceover_file.getbuffer())
-            with open(bg_path, "wb") as f: f.write(music_file.getbuffer())
+            with open(vo_path, "wb") as f: 
+                f.write(voiceover_file.getbuffer())
+            with open(bg_path, "wb") as f: 
+                f.write(music_file.getbuffer())
 
             # --- STEP 1: DOWNLOAD RAW YOUTUBE SHORT ---
             status.info("⏳ Downloading video from YouTube safely...")
-            cmd_dl = ["yt-dlp", "-f", "mp4", "--force-overwrites", "-o", raw_vid, youtube_url]
+            # Downloads best quality separate video and audio streams and forces an MP4 merge container
+            cmd_dl = [
+                "yt-dlp", 
+                "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]", 
+                "--merge-output-format", "mp4",
+                "--force-overwrites", 
+                "-o", raw_vid, 
+                youtube_url
+            ]
             subprocess.run(cmd_dl, check=True, capture_output=True)
 
             # --- STEP 2: MEASURE VOICE LENGTH ---
             status.info("⏳ Analyzing your voiceover track length...")
-            cmd_dur = ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", vo_path]
+            cmd_dur = [
+                "ffprobe", "-v", "error", 
+                "-show_entries", "format=duration", 
+                "-of", "default=noprint_wrappers=1:nokey=1", 
+                vo_path
+            ]
             vo_duration = float(subprocess.run(cmd_dur, check=True, capture_output=True, text=True).stdout.strip())
 
             # --- STEP 3: AUDIO DUCKING MIX ---
@@ -77,7 +92,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             with open(ass_subs, "w", encoding="utf-8") as f:
                 f.write("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n")
                 f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                # Main text is Pink (&HBB00FF), highlight color is Yellow (&H00FFFF)
+                # Default style is Pink (&HBB00FF), active karaoke highlighting color is Yellow (&H00FFFF)
                 f.write("Style: Karaoke,Arial,65,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,960,1\n\n")
                 f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
                 
@@ -90,7 +105,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                         duration_cs = int((word.end - word.start) * 100)
                         f.write(f"Dialogue: 0,{start_time},{end_time},Karaoke,,0,0,0,,{{\\k{duration_cs}}}{clean_word}\n")
 
-            # --- STEP 6: COMPILE EVERYTHING INTO COMPRESSED LOSS LESS VIDEO ---
+            # --- STEP 6: COMPILE EVERYTHING INTO COMPRESSED VIDEO ---
             status.info("⏳ Cleaning footage, cutting to length, and burning captions...")
             # Automatically crops 150px off top/bottom to clean text margins, replaces audio streams, cuts timeline at audio end
             cmd_render = [
@@ -117,6 +132,6 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                 )
 
         except Exception as error:
-            st.error(f"An processing breakdown occurred: {error}")
+            st.error(f"A processing breakdown occurred: {error}")
 
 st.markdown("---")
