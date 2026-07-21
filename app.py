@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 import subprocess
+import yt_dlp
 
 # Try loading faster-whisper gracefully without crashing the web app
 try:
@@ -50,17 +51,25 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             with open(bg_path, "wb") as f: 
                 f.write(music_file.getbuffer())
 
-            # --- STEP 1: DOWNLOAD RAW YOUTUBE SHORT ---
-            status.info("⏳ Downloading video from YouTube safely...")
-            # Using standard standalone format selection to avoid cloud server streaming errors
-            cmd_dl = [
-                "yt-dlp", 
-                "-f", "best", 
-                "--force-overwrites", 
-                "-o", raw_vid, 
-                youtube_url
-            ]
-            subprocess.run(cmd_dl, check=True, capture_output=True)
+            # --- ADVANCED STEP 1: API-BASED BOT-BYPASS DOWNLOADER ---
+            status.info("⏳ Downloading video from YouTube via secure client spoofing...")
+            
+            ydl_opts = {
+                'format': 'best',
+                'outtmpl': raw_vid,
+                'overwrites': True,
+                # Force YouTube to view the cloud server as an authorized viewer interface
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': ['web_embedded', 'web', 'tv']
+                    }
+                },
+                'quiet': True,
+                'no_warnings': True
+            }
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([youtube_url])
 
             # --- STEP 2: MEASURE VOICE LENGTH ---
             status.info("⏳ Analyzing your voiceover track length...")
