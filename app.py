@@ -15,7 +15,7 @@ st.write("Upload your files below to clean video text, mix audio, and generate w
 st.markdown("---")
 
 st.subheader("1. Input Materials")
-youtube_url = st.text_input("Paste YouTube Shorts URL Here:", placeholder="https://youtube.com...")
+youtube_url = st.text_input("Paste YouTube Shorts URL Here:", placeholder="https://www.youtube.com/shorts/...")
 voiceover_file = st.file_uploader("Upload New Voiceover (MP3/WAV):", type=["mp3", "wav"])
 music_file = st.file_uploader("Upload Background Music (MP3/WAV):", type=["mp3", "wav"])
 
@@ -52,11 +52,10 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
 
             # --- STEP 1: DOWNLOAD RAW YOUTUBE SHORT ---
             status.info("⏳ Downloading video from YouTube safely...")
-            # Downloads best quality separate video and audio streams and forces an MP4 merge container
+            # Using standard standalone format selection to avoid cloud server streaming errors
             cmd_dl = [
                 "yt-dlp", 
-                "-f", "bv*[ext=mp4]+ba[ext=m4a]/b[ext=mp4]", 
-                "--merge-output-format", "mp4",
+                "-f", "best", 
                 "--force-overwrites", 
                 "-o", raw_vid, 
                 youtube_url
@@ -92,7 +91,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             with open(ass_subs, "w", encoding="utf-8") as f:
                 f.write("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n")
                 f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                # Default style is Pink (&HBB00FF), active karaoke highlighting color is Yellow (&H00FFFF)
+                # Default text color is Pink (&HBB00FF), active karaoke highlighting color is Yellow (&H00FFFF)
                 f.write("Style: Karaoke,Arial,65,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,5,0,2,10,10,960,1\n\n")
                 f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
                 
@@ -112,7 +111,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                 "ffmpeg", "-y", "-i", raw_vid, "-i", mixed_audio,
                 "-filter_complex", f"[0:v]crop=in_w:in_h-300:0:150,ass={ass_subs}[v]",
                 "-map", "[v]", "-map", "1:a",
-                "-t", str(vo_duration),
+                "-t", str(vo_duration),  # Crucial master instruction: cuts video right when voiceover stops
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "192k", final_output
             ]
