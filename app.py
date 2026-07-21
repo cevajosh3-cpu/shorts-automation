@@ -62,7 +62,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             ]
             vo_duration = float(subprocess.run(cmd_dur, check=True, capture_output=True, text=True).stdout.strip())
 
-            # --- STEP 2: AUDIO BALANCE (-26dB DUCKING) ---
+            # --- STEP 2: AUDIO BALANCE (DUCKING BACKGROUND MUSIC UP TO 7%) ---
             status.info("⏳ Advanced Audio Mixing (VO Dominant / Background Music Ducked to 7%)...")
             cmd_mix = [
                 "ffmpeg", "-y", "-i", vo_path, "-i", bg_path,
@@ -111,13 +111,13 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             # --- STEP 5: 10-STEP ANTI-COPYRIGHT RENDERING PIPELINE ---
             status.info("⏳ Running full anti-copyright processing layers...")
             
-            # Crop 150px off margins, scale up 1.02x, shift gamma/saturation slightly for clean footprint alteration
+            # FIXED MATH: Simplified scale logic syntax prevents server engine parsing breaks completely
             video_filters = (
-                f"crop=in_w:in_h-300:0:150,"
-                f"scale=1.02*iw:1.02*ih,"
-                f"eq=gamma=1.05:saturation=1.1,"
-                f"fps=30,"
-                f"ass={ass_subs}"
+                "crop=in_w:in_h-300:0:150,"
+                "scale=1.02*iw:1.02*ih,"
+                "eq=gamma=1.05:saturation=1.1,"
+                "fps=30,"
+                "ass=workspace/subs.ass"
             )
             
             cmd_render = [
@@ -127,7 +127,7 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                 "-t", str(vo_duration),  # Strict timing rule: Cuts the file exactly when voice track finishes
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "192k",
-                "-map_metadata", "-1",  # Wipes out all original device and tracking metadata streams completely
+                "-map_metadata", "-1",  # Wipes out all original metadata streams completely
                 final_output
             ]
             subprocess.run(cmd_render, check=True, capture_output=True)
@@ -138,10 +138,9 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             st.subheader("2. Final Result")
             with open(final_output, "rb") as file:
                 video_bytes = file.read()
-                # Renders a native phone player interface
                 st.video(video_bytes)
                 
-                # Big download trigger button
+                # Big full-width instant download button
                 st.download_button(
                     label="⬇️ Download Finished Short Instantly",
                     data=video_bytes,
