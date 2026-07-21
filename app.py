@@ -51,17 +51,18 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             with open(bg_path, "wb") as f: 
                 f.write(music_file.getbuffer())
 
-            # --- ADVANCED STEP 1: API-BASED BOT-BYPASS DOWNLOADER ---
-            status.info("⏳ Downloading video from YouTube via secure client spoofing...")
+            # --- ADVANCED STEP 1: MOBILE CLIENT BYPASS ---
+            status.info("⏳ Authenticating stream and bypassing cloud network block...")
             
             ydl_opts = {
-                'format': 'best',
+                'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': raw_vid,
                 'overwrites': True,
-                # Force YouTube to view the cloud server as an authorized viewer interface
+                # Force client spoofing to mimic native Android systems, removing the data-centre DRM mask
                 'extractor_args': {
                     'youtube': {
-                        'player_client': ['web_embedded', 'web', 'tv']
+                        'player_client': ['android_vr', 'android_embed', 'web'],
+                        'skip': ['dash', 'hls']
                     }
                 },
                 'quiet': True,
@@ -70,6 +71,10 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
             
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([youtube_url])
+
+            # Check if video downloaded successfully
+            if not os.path.exists(raw_vid) or os.path.getsize(raw_vid) == 0:
+                raise Exception("The server downloaded an empty video container. Stream injection failed.")
 
             # --- STEP 2: MEASURE VOICE LENGTH ---
             status.info("⏳ Analyzing your voiceover track length...")
@@ -109,18 +114,16 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
                         start_time = f"0:{int(word.start//60)}:{int(word.start%60):02d}.{int((word.start%1)*100):02d}"
                         end_time = f"0:{int(word.end//60)}:{int(word.end%60):02d}.{int((word.end%1)*100):02d}"
                         clean_word = word.word.strip().upper()
-                        # Advanced Substation Karaoke timing structure (\k duration in centiseconds)
                         duration_cs = int((word.end - word.start) * 100)
                         f.write(f"Dialogue: 0,{start_time},{end_time},Karaoke,,0,0,0,,{{\\k{duration_cs}}}{clean_word}\n")
 
             # --- STEP 6: COMPILE EVERYTHING INTO COMPRESSED VIDEO ---
             status.info("⏳ Cleaning footage, cutting to length, and burning captions...")
-            # Automatically crops 150px off top/bottom to clean text margins, replaces audio streams, cuts timeline at audio end
             cmd_render = [
                 "ffmpeg", "-y", "-i", raw_vid, "-i", mixed_audio,
                 "-filter_complex", f"[0:v]crop=in_w:in_h-300:0:150,ass={ass_subs}[v]",
                 "-map", "[v]", "-map", "1:a",
-                "-t", str(vo_duration),  # Crucial master instruction: cuts video right when voiceover stops
+                "-t", str(vo_duration),  # Strict timing rule: Cuts the file exactly when voice track finishes
                 "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
                 "-c:a", "aac", "-b:a", "192k", final_output
             ]
