@@ -1,59 +1,65 @@
 import os
 import requests
+import re
 
 def download_youtube_short(url, output_path):
     """
-    Production-tier bypass downloader. 
-    Wipes out 403 blocks by routing requests through a sanitized public format extractor api
-    instead of calling flagged data-center terminal commands.
+    Advanced Multi-Server Failover Engine.
+    Bypasses platform firewalls by shifting between completely independent 
+    distributed proxy networks automatically until a clean connection is established.
     """
     if os.path.exists(output_path):
         os.remove(output_path)
         
-    try:
-        # Extract unique 11-character video ID from any YouTube URL structure safely
-        video_id = ""
-        if "shorts/" in url:
-            video_id = url.split("shorts/")[1].split("?")[0].split("&")[0]
-        elif "v=" in url:
-            video_id = url.split("v=")[1].split("?")[0].split("&")[0]
-        else:
-            video_id = url.split("/")[-1].split("?")[0].split("&")[0]
-            
-        if not video_id or len(video_id) != 11:
-            return False
+    # Isolate the clean 11-character video ID from the input URL path
+    video_id_match = re.search(r'(?:shorts/|v=|be/|embed/)([a-zA-Z0-9_-]{11})', url)
+    if not video_id_match:
+        return False
+    video_id = video_id_match.group(1)
+    clean_watch_url = f"https://www.youtube.com/watch?v={video_id}"
 
-        # Accessing an open distributed stream conversion endpoint to fetch a clean, direct mp4 data pipe
-        api_endpoint = f"https://cobalt.tools"
-        headers = {
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-        payload = {
-            "url": f"https://www.youtube.com/watch?v={video_id}",
-            "videoQuality": "720", # Forces standard 720p HD grid for rapid, reliable rendering speeds
-            "audioFormat": "mp3"
-        }
-        
-        response = requests.post(api_endpoint, json=payload, headers=headers, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            download_url = data.get("url")
+    # Distributed infrastructure API pool (Rotates dynamically if firewalls trigger a 403 block)
+    api_pool = [
+        "https://cobalt.tools",
+        "https://kwiatekniewidomek.pl",
+        "https://cobalt.lol",
+        "https://as93.net"
+    ]
+    
+    headers = {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "Mozilla/5.0 (Linux; Android 10; Redmi A3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+    }
+    
+    payload = {
+        "url": clean_watch_url,
+        "videoQuality": "720", # Optimization threshold for high-speed cloud rendering
+        "audioFormat": "mp3",
+        "filenameStyle": "basic"
+    }
+
+    # Execute the rotation queue loop
+    for current_api in api_pool:
+        try:
+            response = requests.post(current_api, json=payload, headers=headers, timeout=8)
+            if response.status_code == 200:
+                data = response.json()
+                stream_download_url = data.get("url")
+                
+                if stream_download_url:
+                    # Stream the raw file blocks directly onto the server system
+                    with requests.get(stream_download_url, stream=True, timeout=25) as r:
+                        r.raise_for_status()
+                        with open(output_path, "wb") as f:
+                            for chunk in r.iter_content(chunk_size=16384):
+                                if chunk:
+                                    f.write(chunk)
+                                    
+                    # Verify asset container integrity
+                    if os.path.exists(output_path) and os.path.getsize(output_path) > 10000:
+                        return True # Success achieved, break out of execution block
+        except Exception:
+            continue # Silent handoff: instantly drops broken server node and moves to next line
             
-            if download_url:
-                # Streams the raw video binary data file straight onto the cloud server filesystem chunk-by-chunk
-                with requests.get(download_url, stream=True, timeout=30) as r:
-                    r.raise_for_stdio = True
-                    with open(output_path, "wb") as f:
-                        for chunk in r.iter_content(chunk_size=8192):
-                            if chunk:
-                                f.write(chunk)
-                                
-                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                    return True
-        return False
-        
-    except Exception:
-        # Emergency local safety fallback rule: returns false so frontend triggers localized upload route seamlessly
-        return False
+    return False # Final safeguard: returns false if entire pool fails, routing cleanly to file upload
