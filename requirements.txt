@@ -1,6 +1,5 @@
-streamlit
+fastapi
+uvicorn
 yt-dlp
 faster-whisper
-numpy
-torch
-curl_cffi
+requests
