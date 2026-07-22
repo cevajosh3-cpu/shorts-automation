@@ -1,44 +1,59 @@
 import os
-import yt_dlp
+import requests
 
 def download_youtube_short(url, output_path):
     """
-    Advanced production-tier downloader that impersonates multi-client browsers
-    to completely slip past data-center 403 Forbidden and DRM blocks.
+    Production-tier bypass downloader. 
+    Wipes out 403 blocks by routing requests through a sanitized public format extractor api
+    instead of calling flagged data-center terminal commands.
     """
     if os.path.exists(output_path):
         os.remove(output_path)
         
-    ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': output_path,
-        'overwrites': True,
-        'quiet': True,
-        'no_warnings': True,
-        # Emulates real hardware signatures to mask the Streamlit Cloud IP address
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Connection': 'keep-alive',
-        },
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'web_embedded'],
-                'skip': ['dash', 'hls']
-            }
-        }
-    }
-    
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            return True
+        # Extract unique 11-character video ID from any YouTube URL structure safely
+        video_id = ""
+        if "shorts/" in url:
+            video_id = url.split("shorts/")[1].split("?")[0].split("&")[0]
+        elif "v=" in url:
+            video_id = url.split("v=")[1].split("?")[0].split("&")[0]
+        else:
+            video_id = url.split("/")[-1].split("?")[0].split("&")[0]
+            
+        if not video_id or len(video_id) != 11:
+            return False
+
+        # Accessing an open distributed stream conversion endpoint to fetch a clean, direct mp4 data pipe
+        api_endpoint = f"https://cobalt.tools"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+        payload = {
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "videoQuality": "720", # Forces standard 720p HD grid for rapid, reliable rendering speeds
+            "audioFormat": "mp3"
+        }
+        
+        response = requests.post(api_endpoint, json=payload, headers=headers, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            download_url = data.get("url")
+            
+            if download_url:
+                # Streams the raw video binary data file straight onto the cloud server filesystem chunk-by-chunk
+                with requests.get(download_url, stream=True, timeout=30) as r:
+                    r.raise_for_stdio = True
+                    with open(output_path, "wb") as f:
+                        for chunk in r.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    return True
         return False
-    except Exception as e:
-        # Fallback to absolute raw extraction mode if security tokens shift
-        ydl_opts['format'] = 'best'
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        return os.path.exists(output_path)
+        
+    except Exception:
+        # Emergency local safety fallback rule: returns false so frontend triggers localized upload route seamlessly
+        return False
