@@ -1,35 +1,42 @@
 import streamlit as st
 import os
-import subprocess
 
-# Try loading faster-whisper gracefully without crashing the web app
-try:
-    from faster_whisper import WhisperModel
-except ImportError:
-    WhisperModel = None
+# Import our custom standalone tool modules
+import downloader
+import audio_mixer
+import caption_engine
+import video_compiler
 
-st.set_page_config(page_title="AI Shorts Processor Pro", layout="centered")
+st.set_page_config(page_title="AI Multi-Platform Shorts Engine", layout="centered")
 
 st.title("🎬 AI Shorts Automation Dashboard")
-st.write("Upload your files below to fully clean footage, balance audio, and generate colorful YouTube Shorts compliant captions.")
+st.write("Clean video text, balance audio, and generate colorful safe-zone captions via URL link or direct file manager upload.")
 st.markdown("---")
 
 st.subheader("1. Input Materials")
-raw_video_file = st.file_uploader("Upload Original Short Video (MP4):", type=["mp4", "mov"])
+
+# --- HYBRID DUAL-INPUT DESIGN ---
+st.write("👉 **Choose ONE method to provide your video footage:**")
+youtube_url = st.text_input("Method A: Paste Link (YouTube, TikTok, Instagram, etc.):", placeholder="https://...")
+raw_video_file = st.file_uploader("Method B: Or Upload Video File Directly (MP4/MOV):", type=["mp4", "mov"])
+
+st.markdown("---")
+st.write("👉 **Provide your replacement audio tracks:**")
 voiceover_file = st.file_uploader("Upload New Voiceover (MP3/WAV):", type=["mp3", "wav"])
 music_file = st.file_uploader("Upload Background Music (MP3/WAV):", type=["mp3", "wav"])
 
 st.markdown("---")
 
 if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
-    if not raw_video_file or not voiceover_file or not music_file:
-        st.error("Please upload ALL three files (Video, Voiceover, and Background Music) first!")
-    elif WhisperModel is None:
-        st.error("System configuration error: AI Caption Engine failed to load. Check requirements.txt.")
+    # Enforce strict input checks
+    if not youtube_url and not raw_video_file:
+        st.error("Please paste a link OR upload a video file first!")
+    elif not voiceover_file or not music_file:
+        st.error("Please upload BOTH audio files (Voiceover and Background Music) first!")
     else:
         status = st.empty()
         
-        # Get absolute paths to prevent FFmpeg filter errors on Streamlit Cloud
+        # Build clean absolute workspace environments
         base_dir = os.path.dirname(os.path.abspath(__file__))
         workspace_dir = os.path.join(base_dir, "workspace")
         os.makedirs(workspace_dir, exist_ok=True)
@@ -42,114 +49,53 @@ if st.button("🚀 START FULL AUTO-PROCESS", type="primary"):
         final_output = os.path.join(workspace_dir, "final_render.mp4")
 
         try:
-            # Clean up old files from previous runs
+            # Refresh workspace and purge residual renders
             for f in [raw_vid, vo_path, bg_path, mixed_audio, ass_subs, final_output]:
-                if os.path.exists(f): 
-                    os.remove(f)
+                if os.path.exists(f): os.remove(f)
 
-            # Save uploaded streams locally on the server filesystem
-            with open(raw_vid, "wb") as f:
-                f.write(raw_video_file.getbuffer())
-            with open(vo_path, "wb") as f: 
-                f.write(voiceover_file.getbuffer())
-            with open(bg_path, "wb") as f: 
-                f.write(music_file.getbuffer())
+            # Instantly lock user audio tracks into server filesystem
+            with open(vo_path, "wb") as f: f.write(voiceover_file.getbuffer())
+            with open(bg_path, "wb") as f: f.write(music_file.getbuffer())
 
-            # --- STEP 1: MEASURE VOICE LENGTH ---
-            status.info("⏳ Analyzing your voiceover track length...")
-            cmd_dur = [
-                "ffprobe", "-v", "error", 
-                "-show_entries", "format=duration", 
-                "-of", "default=noprint_wrappers=1:nokey=1", 
-                vo_path
-            ]
-            vo_duration = float(subprocess.run(cmd_dur, check=True, capture_output=True, text=True).stdout.strip())
+            # --- ROUTING STEP: DETECT INPUT MATERIAL METHOD ---
+            if raw_video_file is not None:
+                status.info("⏳ Processing your uploaded file manager video stream...")
+                with open(raw_vid, "wb") as f: 
+                    f.write(raw_video_file.getbuffer())
+            else:
+                status.info("⏳ Activating advanced multi-platform client bypass scraper...")
+                download_success = downloader.download_youtube_short(youtube_url, raw_vid)
+                if not download_success or not os.path.exists(raw_vid):
+                    raise Exception("The web scraper client was blocked by the platform firewalls. Please upload the raw MP4 file directly using Method B.")
 
-            # --- STEP 2: AUDIO BALANCE (DUCKING BACKGROUND MUSIC UP TO 7%) ---
-            status.info("⏳ Advanced Audio Mixing (VO Dominant / Background Music Ducked to 7%)...")
-            cmd_mix = [
-                "ffmpeg", "-y", "-i", vo_path, "-i", bg_path,
-                "-filter_complex", "[1:a]volume=0.07[bg];[0:a][bg]amix=inputs=2:duration=first[a]",
-                "-map", "[a]", mixed_audio
-            ]
-            subprocess.run(cmd_mix, check=True, capture_output=True)
+            # --- MODULE STEP 1: MEASURE TIMELINES ---
+            status.info("⏳ Mapping audio track milestones...")
+            vo_duration = audio_mixer.get_audio_duration(vo_path)
 
-            # --- STEP 3: WORD-LEVEL TIMESTAMPS VIA WHISPER ---
-            status.info("⏳ AI Engine transcribing speech word-by-word...")
-            model = WhisperModel("tiny", device="cpu", compute_type="int8")
-            segments, info = model.transcribe(vo_path, word_timestamps=True)
-            
-            # --- STEP 4: GENERATE SHORTS COMPLIANT MULTI-COLOR REVOLVING CAPTIONS (ASS) ---
-            status.info("⏳ Designing YouTube Shorts safe-zone colorful captions...")
-            
-            # Subtitle styling colors in hex format (AABBGGRR)
-            colors = [
-                "&H00FFFFFF",  # Pure White
-                "&H0000FFFF",  # Bright Yellow
-                "&H0000FF00",  # Neon Green
-                "&H000000FF",  # Red
-                "&H00FF80FF"   # Pink
-            ]
-            
-            with open(ass_subs, "w", encoding="utf-8") as f:
-                f.write("[Script Info]\nScriptType: v4.00+\nPlayResX: 1080\nPlayResY: 1920\n\n")
-                f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                # Font size 85, Alignment 2 (Bottom Center), MarginV 850 positions text in middle safe-zone perfectly
-                f.write("Style: MultiColor,Impact,85,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,6,2,2,10,10,850,1\n\n")
-                f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-                
-                color_index = 0
-                for segment in segments:
-                    for word in segment.words:
-                        start_time = f"0:{int(word.start//60)}:{int(word.start%60):02d}.{int((word.start%1)*100):02d}"
-                        end_time = f"0:{int(word.end//60)}:{int(word.end%60):02d}.{int((word.end%1)*100):02d}"
-                        clean_word = word.word.strip().upper()
-                        
-                        # Apply revolving color profile per word entry
-                        chosen_color = colors[color_index % len(colors)]
-                        color_index += 1
-                        
-                        f.write(f"Dialogue: 0,{start_time},{end_time},MultiColor,,0,0,0,,{{\\c{chosen_color}}}{clean_word}\n")
+            # --- MODULE STEP 2: PROFESSIONAL MIXING ---
+            status.info("⏳ Mixing balanced soundscapes (VO at 100% / BG Music at 7%)...")
+            audio_mixer.mix_audio_tracks(vo_path, bg_path, mixed_audio)
 
-            # --- STEP 5: 10-STEP ANTI-COPYRIGHT RENDERING PIPELINE ---
-            status.info("⏳ Running full anti-copyright processing layers...")
-            
-            # Using clean layout instructions to bypass status 187 parsing breaks completely
-            # Linux paths for subtitles file must escape backward slashes or keep a clean file pattern
-            clean_ass_path = ass_subs.replace("\\", "/")
-            video_filters = (
-                f"crop=in_w:in_h-300:0:150,"
-                f"scale=1.02*iw:1.02*ih,"
-                f"eq=gamma=1.05:saturation=1.1,"
-                f"fps=30,"
-                f"ass='{clean_ass_path}'"
-            )
-            
-            cmd_render = [
-                "ffmpeg", "-y", "-i", raw_vid, "-i", mixed_audio,
-                "-filter_complex", f"[0:v]{video_filters}[v]",
-                "-map", "[v]", "-map", "1:a",
-                "-t", str(vo_duration),  # Strict timing rule: Cuts video file exactly when voice track finishes
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-                "-c:a", "aac", "-b:a", "192k",
-                "-map_metadata", "-1",  # Strips all original tracking metadata tags
-                final_output
-            ]
-            subprocess.run(cmd_render, check=True, capture_output=True)
+            # --- MODULE STEP 3: SPEECH SPECTRUM TRANSCRIPTION ---
+            status.info("⏳ AI Engine analyzing vocal tracks for word-level captions...")
+            caption_engine.generate_karaoke_captions(vo_path, ass_subs)
+
+            # --- MODULE STEP 4: ANTI-COPYRIGHT FILM TRANSFORMATION ---
+            status.info("⏳ Slicing margins, modifying metadata, and burning dynamic captions...")
+            video_compiler.compile_final_short(raw_vid, mixed_audio, ass_subs, vo_duration, final_output)
 
             status.success("🎉 Video processing and cleaning complete!")
             
-            # --- STEP 6: HAND OVER THE COMPLETED ASSET AND DOWNLOAD INTERFACE ---
+            # --- OUTPUT AND DOWNLOAD DELIVERY LAYER ---
             st.subheader("2. Final Result")
             with open(final_output, "rb") as file:
                 video_bytes = file.read()
                 st.video(video_bytes)
                 
-                # Big full-width instant download button
                 st.download_button(
                     label="⬇️ Download Finished Short Instantly",
                     data=video_bytes,
-                    file_name="Cleaned_AI_Short.mp4",
+                    file_name="Automated_Clean_Short.mp4",
                     mime="video/mp4",
                     use_container_width=True
                 )
